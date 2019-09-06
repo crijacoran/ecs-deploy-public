@@ -1,0 +1,26 @@
+#!/bin/bash
+MS='webui'
+tag='latest'
+SERVICE_NAME='web-PRODA'
+TASK_DESIRED=2
+registry="ID.dkr.ecr.us-west-1.amazonaws.com/${MS}:${tag}"
+CLUSTER='Prod-A-Cluster'
+file_task_definition='web-PRODA.json'
+BUCKET="s3://prodbucket-taskdefinition"
+sudo aws s3 cp ${BUCKET}/${file_task_definition} .
+
+new_task=$(aws ecs register-task-definition --cli-input-json file://${file_task_definition} --query 'taskDefinition.taskDefinitionArn' --output text)
+old_task=$(aws ecs describe-services --cluster ${CLUSTER} --service ${SERVICE_NAME} --query 'services[0].taskDefinition' --output text)
+echo "Old task definition --> ${old_task}"
+echo "New task definition --> ${new_task}"
+
+DESIRED=${TASK_DESIRED}
+
+aws ecs update-service --cluster ${CLUSTER} --service ${SERVICE_NAME} --task-definition ${new_task} --deployment-configuration maximumPercent=200,minimumHealthyPercent=0  --desired-count=2 --query 'service.deployments'
+
+if [ -n "${old_task}" ]
+then
+  echo "De-register old task definition --> ${old_task}"
+  aws ecs deregister-task-definition --task-definition ${old_task} --query 'taskDefinition.taskDefinitionArn'
+  echo "old task --> $(aws ecs list-tasks --cluster ${CLUSTER} --service-name ${SERVICE_NAME} --query "taskArns")"
+fi
